@@ -1,6 +1,5 @@
 ﻿import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { db, hasFirebaseConfig, storage } from './firebase';
+import { db, hasFirebaseConfig } from './firebase';
 
 const STORE_COLLECTION = 'store_data';
 const STORE_DOCS = {
@@ -57,14 +56,36 @@ const saveOrdersRemote = async (orders) => writeRemotePart(STORE_DOCS.orders, or
 const saveSiteConfigRemote = async (siteConfig) => writeRemotePart(STORE_DOCS.siteConfig, siteConfig);
 
 const uploadProductImage = async (file) => {
-  if (!hasFirebaseConfig || !storage) {
-    throw new Error('Firebase Storage is not configured');
+  if (!(file instanceof File)) {
+    throw new Error('A valid image file is required');
   }
 
-  const safeName = `${Date.now()}-${file.name}`.replace(/\s+/g, '-').toLowerCase();
-  const imageRef = ref(storage, `products/${safeName}`);
-  await uploadBytes(imageRef, file);
-  return getDownloadURL(imageRef);
+  const imgbbApiKey = import.meta.env.VITE_IMGBB_API_KEY?.trim();
+  if (!imgbbApiKey) {
+    throw new Error('ImgBB API key is missing. Set VITE_IMGBB_API_KEY');
+  }
+
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('name', `${Date.now()}-${file.name}`.replace(/\s+/g, '-').toLowerCase());
+
+  const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`ImgBB upload failed with status ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const imageUrl = payload?.data?.url;
+
+  if (!payload?.success || !imageUrl) {
+    throw new Error(payload?.error?.message || 'ImgBB did not return image URL');
+  }
+
+  return imageUrl;
 };
 
 export {
