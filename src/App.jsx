@@ -1,6 +1,13 @@
 ﻿import React, { useEffect, useMemo, useReducer, useState } from 'react';
 import { motion as Motion, AnimatePresence } from 'framer-motion';
+import {
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
 import algeriaCitiesData from './data/algeria_cities.json';
+import { auth } from './lib/firebase';
 import {
   hasFirebaseConfig,
   loadStoreBundle,
@@ -20,7 +27,9 @@ import {
   Heart,
   Home,
   LayoutDashboard,
+  Lock,
   LogOut,
+  Mail,
   Megaphone,
   Package,
   Plus,
@@ -30,6 +39,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   ShoppingCart,
+  Sparkles,
   Store,
   Trash2,
   User,
@@ -233,7 +243,7 @@ const DesktopNavbar = ({
   navigateTo,
   cartCount,
   isAdminAuth,
-  setAdminAuth,
+  onAdminLogout,
   siteName,
   searchQuery,
   setSearchQuery,
@@ -306,7 +316,7 @@ const DesktopNavbar = ({
             </button>
             <button
               onClick={() => {
-                setAdminAuth(false);
+                onAdminLogout();
                 navigateTo('home');
               }}
               className="text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors"
@@ -1024,38 +1034,143 @@ const CheckoutView = ({ cart, checkoutPricing, onAddOrder, navigateTo }) => {
   );
 };
 
-const AdminLogin = ({ setAdminAuth, showToast }) => {
+const AdminLogin = ({ showToast }) => {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+
+  const handleLogin = async (event) => {
+    event.preventDefault();
+
+    if (!auth) {
+      showToast('Firebase Authentication غير مهيأ. تحقق من إعدادات البيئة.', 'error');
+      return;
+    }
+
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !password) {
+      showToast('أدخل البريد الإلكتروني وكلمة المرور', 'error');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      showToast('تم تسجيل الدخول بنجاح');
+    } catch (error) {
+      const errorCode = error?.code || '';
+      if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/wrong-password' || errorCode === 'auth/user-not-found') {
+        showToast('بيانات تسجيل الدخول غير صحيحة', 'error');
+      } else if (errorCode === 'auth/too-many-requests') {
+        showToast('محاولات كثيرة. حاول لاحقاً', 'error');
+      } else {
+        showToast('تعذر تسجيل الدخول حالياً', 'error');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!auth) {
+      showToast('Firebase Authentication غير مهيأ', 'error');
+      return;
+    }
+
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      showToast('أدخل البريد الإلكتروني أولاً لإرسال رابط الاستعادة', 'error');
+      return;
+    }
+
+    try {
+      setIsSendingReset(true);
+      await sendPasswordResetEmail(auth, normalizedEmail);
+      showToast('تم إرسال رابط استعادة كلمة المرور إلى البريد الإلكتروني');
+    } catch {
+      showToast('تعذر إرسال رابط الاستعادة. تحقق من البريد الإلكتروني.', 'error');
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100 w-full max-w-sm text-center">
-        <ShieldCheck size={48} className="mx-auto text-slate-900 mb-6" />
-        <h2 className="text-2xl font-black mb-6">تسجيل الدخول للإدارة</h2>
-        <input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="••••••••"
-          className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center text-xl font-bold tracking-[0.5em] mb-4 outline-none focus:ring-2 focus:ring-slate-900"
-        />
-        <button
-          onClick={() => {
-            if (password === 'admin123') {
-              setAdminAuth(true);
-              showToast('تم الدخول للإدارة');
-            } else {
-              showToast('كلمة سر خاطئة', 'error');
-            }
-          }}
-          className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-lg"
-        >
-          فتح النظام
-        </button>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-emerald-50/40 to-teal-100/40 flex items-center justify-center p-4 md:p-8">
+      <Motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-md bg-white/95 backdrop-blur-xl border border-white shadow-2xl rounded-[2rem] p-6 md:p-8"
+      >
+        <div className="mb-8 text-center">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-slate-900 to-emerald-600 text-white flex items-center justify-center shadow-xl mb-4">
+            <ShieldCheck size={30} />
+          </div>
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900">بوابة الإدارة الآمنة</h2>
+          <p className="text-sm text-slate-500 font-bold mt-2">تسجيل دخول عبر Firebase Authentication</p>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">البريد الإلكتروني</label>
+            <div className="relative">
+              <Mail size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="email"
+                dir="ltr"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="admin@store.com"
+                autoComplete="email"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 py-3.5 pr-11 pl-4 font-bold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 transition"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">كلمة المرور</label>
+            <div className="relative">
+              <Lock size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="password"
+                dir="ltr"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="********"
+                autoComplete="current-password"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 py-3.5 pr-11 pl-4 font-bold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 transition"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSubmitting || !auth}
+            className="w-full mt-2 bg-slate-900 hover:bg-slate-800 text-white font-black py-3.5 rounded-2xl shadow-lg shadow-slate-900/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            disabled={isSendingReset || !auth}
+            className="w-full text-sm font-bold text-emerald-700 hover:text-emerald-600 py-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSendingReset ? 'جاري إرسال الرابط...' : 'نسيت كلمة المرور؟'}
+          </button>
+        </form>
+
+        {!auth && (
+          <div className="mt-4 rounded-2xl bg-orange-50 border border-orange-200 p-3 text-xs font-bold text-orange-700 text-center">
+            لا يمكن تسجيل الدخول قبل إكمال متغيرات Firebase في ملف `.env`.
+          </div>
+        )}
+      </Motion.div>
     </div>
   );
 };
+
 const AdminCMS = ({
   orders,
   setOrders,
@@ -1063,9 +1178,10 @@ const AdminCMS = ({
   setProducts,
   siteConfig,
   setSiteConfig,
-  setAdminAuth,
+  onLogout,
   showToast,
   syncStatus,
+  adminUser,
 }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showProductForm, setShowProductForm] = useState(false);
@@ -1167,18 +1283,15 @@ const AdminCMS = ({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!hasFirebaseConfig) {
-      showToast('فعّل إعدادات Firebase أولاً ثم أعد رفع الصورة', 'error');
-      return;
-    }
+    
 
     try {
       setUploadingImage(true);
       const imageUrl = await uploadProductImage(file);
       setProductForm((prev) => ({ ...prev, image: imageUrl }));
-      showToast('تم رفع الصورة إلى Firebase بنجاح');
+      showToast('تم رفع الصورة عبر ImgBB بنجاح');
     } catch {
-      showToast('فشل رفع الصورة إلى Firebase', 'error');
+      showToast('فشل رفع الصورة. تحقق من VITE_IMGBB_API_KEY', 'error');
     } finally {
       setUploadingImage(false);
       event.target.value = '';
@@ -1193,85 +1306,102 @@ const AdminCMS = ({
   };
 
   return (
-    <Motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-24 md:pb-10 min-h-screen bg-white">
-      <header className="bg-slate-900 text-white px-6 py-4 flex justify-between items-center shadow-md sticky top-0 z-40">
-        <h1 className="text-xl font-black flex items-center gap-2">
-          <ShieldCheck /> لوحة التحكم المركزية
-        </h1>
-        <div className="flex items-center gap-3">
-          <span
-            className={`hidden md:flex px-3 py-1 rounded-full text-xs font-bold ${
-              siteConfig.isOnline
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50'
-                : 'bg-orange-500/20 text-orange-300 border border-orange-500/50'
-            }`}
-          >
-            {siteConfig.isOnline ? 'المتجر مفتوح' : 'وضع الصيانة'}
-          </span>
-          <span
-            className={`hidden md:flex px-3 py-1 rounded-full text-xs font-bold border ${
-              syncStatus === 'online'
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
-                : syncStatus === 'syncing'
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                : 'bg-slate-500/20 text-slate-200 border-slate-400/40'
-            }`}
-          >
-            {syncStatus === 'online' ? 'Firebase متصل' : syncStatus === 'syncing' ? 'جاري المزامنة' : 'وضع محلي'}
-          </span>
-          <button
-            onClick={() => setAdminAuth(false)}
-            className="bg-white/10 hover:bg-red-500 hover:text-white p-2 rounded-full transition-all text-slate-300"
-            title="خروج"
-          >
-            <LogOut size={18} />
-          </button>
+    <Motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-24 md:pb-10 min-h-screen bg-gradient-to-br from-slate-100 via-white to-emerald-50/60">
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/90 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex flex-col md:flex-row justify-between md:items-center gap-3">
+          <div>
+            <h1 className="text-xl md:text-2xl font-black text-slate-900 flex items-center gap-2">
+              <ShieldCheck className="text-emerald-600" /> لوحة التحكم المركزية
+            </h1>
+            <p className="text-xs text-slate-500 font-bold mt-1" dir="ltr">{adminUser?.email || 'admin'}</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`px-3 py-1.5 rounded-full text-xs font-bold border ${
+                siteConfig.isOnline
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-orange-50 text-orange-700 border-orange-200'
+              }`}
+            >
+              {siteConfig.isOnline ? 'المتجر مفتوح' : 'وضع الصيانة'}
+            </span>
+            <span
+              className={`px-3 py-1.5 rounded-full text-xs font-bold border ${
+                syncStatus === 'online'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : syncStatus === 'syncing'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-200'
+              }`}
+            >
+              {syncStatus === 'online' ? 'Firebase متصل' : syncStatus === 'syncing' ? 'جاري المزامنة' : 'وضع محلي'}
+            </span>
+            <button
+              onClick={() => onLogout()}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-black hover:bg-slate-800 transition"
+              title="خروج"
+            >
+              <LogOut size={16} /> خروج
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row mt-6 md:mt-10 px-4 md:px-6 gap-6 md:gap-10">
-        <div className="flex md:flex-col gap-2 overflow-x-auto no-scrollbar pb-2 md:pb-0 border-b md:border-b-0 border-gray-100 md:w-72 md:border-l shrink-0">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex items-center gap-3 px-4 py-3 md:py-4 rounded-xl md:rounded-r-none md:rounded-l-2xl whitespace-nowrap transition-colors font-bold ${
-              activeTab === 'dashboard' ? 'bg-slate-900 text-white' : 'text-gray-500 hover:bg-gray-100'
-            }`}
-          >
-            <LayoutDashboard size={20} /> نظرة عامة
-          </button>
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`flex items-center gap-3 px-4 py-3 md:py-4 rounded-xl md:rounded-r-none md:rounded-l-2xl whitespace-nowrap transition-colors font-bold ${
-              activeTab === 'orders' ? 'bg-slate-900 text-white' : 'text-gray-500 hover:bg-gray-100'
-            }`}
-          >
-            <ShoppingCart size={20} /> إدارة الطلبات
-          </button>
-          <button
-            onClick={() => setActiveTab('products')}
-            className={`flex items-center gap-3 px-4 py-3 md:py-4 rounded-xl md:rounded-r-none md:rounded-l-2xl whitespace-nowrap transition-colors font-bold ${
-              activeTab === 'products' ? 'bg-slate-900 text-white' : 'text-gray-500 hover:bg-gray-100'
-            }`}
-          >
-            <Store size={20} /> إدارة المنتجات
-          </button>
-          <button
-            onClick={() => setActiveTab('marketing')}
-            className={`flex items-center gap-3 px-4 py-3 md:py-4 rounded-xl md:rounded-r-none md:rounded-l-2xl whitespace-nowrap transition-colors font-bold ${
-              activeTab === 'marketing' ? 'bg-slate-900 text-white' : 'text-gray-500 hover:bg-gray-100'
-            }`}
-          >
-            <Megaphone size={20} /> التسويق والإعلانات
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-3 px-4 py-3 md:py-4 rounded-xl md:rounded-r-none md:rounded-l-2xl whitespace-nowrap transition-colors font-bold ${
-              activeTab === 'settings' ? 'bg-slate-900 text-white' : 'text-gray-500 hover:bg-gray-100'
-            }`}
-          >
-            <Settings size={20} /> إعدادات المتجر
-          </button>
-        </div>
+      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row mt-6 md:mt-8 px-4 md:px-6 gap-6 md:gap-8">
+        <aside className="lg:w-72 shrink-0">
+          <div className="rounded-3xl border border-slate-200 bg-white/95 backdrop-blur p-3 shadow-sm">
+            <div className="rounded-2xl bg-gradient-to-l from-emerald-500 to-teal-500 text-white p-4 mb-3">
+              <div className="flex items-center gap-2 font-black text-sm">
+                <Sparkles size={16} /> Dashboard Modern
+              </div>
+              <p className="text-[11px] text-emerald-50 mt-1">تنقل سريع بين الأقسام الأساسية</p>
+            </div>
+
+            <div className="flex lg:flex-col gap-2 overflow-x-auto no-scrollbar pb-1 lg:pb-0">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl whitespace-nowrap transition-colors font-bold ${
+                  activeTab === 'dashboard' ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <LayoutDashboard size={18} /> نظرة عامة
+              </button>
+              <button
+                onClick={() => setActiveTab('orders')}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl whitespace-nowrap transition-colors font-bold ${
+                  activeTab === 'orders' ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <ShoppingCart size={18} /> الطلبات
+              </button>
+              <button
+                onClick={() => setActiveTab('products')}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl whitespace-nowrap transition-colors font-bold ${
+                  activeTab === 'products' ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Store size={18} /> المنتجات
+              </button>
+              <button
+                onClick={() => setActiveTab('marketing')}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl whitespace-nowrap transition-colors font-bold ${
+                  activeTab === 'marketing' ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Megaphone size={18} /> التسويق
+              </button>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl whitespace-nowrap transition-colors font-bold ${
+                  activeTab === 'settings' ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Settings size={18} /> الإعدادات
+              </button>
+            </div>
+          </div>
+        </aside>
 
         <div className="flex-1 w-full overflow-hidden">
           {activeTab === 'dashboard' && (
@@ -1520,17 +1650,15 @@ const AdminCMS = ({
                         onChange={(event) => setProductForm({ ...productForm, image: event.target.value })}
                         className="w-full p-3 rounded-xl border border-gray-300 font-bold outline-none focus:border-slate-900"
                       />
-                      <label className="block text-xs font-bold text-gray-500 mt-3 mb-2">أو ارفع صورة مباشرة (Firebase Storage)</label>
+                      <label className="block text-xs font-bold text-gray-500 mt-3 mb-2">أو ارفع صورة مباشرة عبر ImgBB</label>
                       <input
                         type="file"
                         accept="image/*"
                         onChange={handleUploadProductImage}
-                        disabled={uploadingImage || !hasFirebaseConfig}
+                        disabled={uploadingImage}
                         className="w-full p-2 rounded-xl border border-dashed border-gray-300 bg-white text-xs font-bold"
                       />
-                      {!hasFirebaseConfig && (
-                        <p className="text-[11px] text-orange-600 font-bold mt-1">اربط Firebase عبر env لتفعيل رفع الصور.</p>
-                      )}
+                      <p className="text-[11px] text-slate-500 font-bold mt-1">يتطلب المتغير `VITE_IMGBB_API_KEY` في `.env`.</p>
                     </div>
                   </div>
 
@@ -1734,7 +1862,8 @@ export default function App() {
   const [currentRoute, setCurrentRoute] = useState('home');
   const [cart, dispatchCart] = useReducer(cartReducer, []);
   const [orders, setOrders] = useState(() => normalizeOrders(readStorage(STORAGE_KEYS.orders, [])));
-  const [isAdminAuth, setAdminAuth] = useState(false);
+  const [adminUser, setAdminUser] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(!auth);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   const [siteConfig, setSiteConfig] = useState(() => ({
@@ -1755,6 +1884,21 @@ export default function App() {
   const [checkoutPricing, setCheckoutPricing] = useState({ subtotal: 0, discount: 0, total: 0, couponCode: '' });
   const [isRemoteBootstrapped, setIsRemoteBootstrapped] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasFirebaseConfig ? 'syncing' : 'local');
+  const isAdminAuth = Boolean(adminUser);
+
+  useEffect(() => {
+    if (!auth) {
+      setIsAuthReady(true);
+      return undefined;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAdminUser(user);
+      setIsAuthReady(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1883,6 +2027,19 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleAdminLogout = async () => {
+    try {
+      if (auth) {
+        await signOut(auth);
+      } else {
+        setAdminUser(null);
+      }
+      showToast('تم تسجيل الخروج من لوحة الإدارة');
+    } catch {
+      showToast('تعذر تسجيل الخروج حالياً', 'error');
+    }
+  };
+
   const toggleFavorite = (productId) => {
     setFavorites((previous) =>
       previous.includes(productId)
@@ -1984,7 +2141,7 @@ export default function App() {
             navigateTo={navigateTo}
             cartCount={cartCount}
             isAdminAuth={isAdminAuth}
-            setAdminAuth={setAdminAuth}
+            onAdminLogout={handleAdminLogout}
             siteName={siteConfig.name}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
@@ -2034,11 +2191,19 @@ export default function App() {
             />
           )}
 
-          {currentRoute === 'admin' && !isAdminAuth && (
-            <AdminLogin key="login" setAdminAuth={setAdminAuth} showToast={showToast} />
+          {currentRoute === 'admin' && !isAuthReady && (
+            <Motion.div key="auth-loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-[70vh] flex items-center justify-center">
+              <div className="bg-white border border-slate-200 rounded-3xl px-8 py-6 shadow-sm text-center">
+                <p className="text-slate-600 font-black">جاري التحقق من الجلسة...</p>
+              </div>
+            </Motion.div>
           )}
 
-          {currentRoute === 'admin' && isAdminAuth && (
+          {currentRoute === 'admin' && isAuthReady && !isAdminAuth && (
+            <AdminLogin key="login" showToast={showToast} />
+          )}
+
+          {currentRoute === 'admin' && isAuthReady && isAdminAuth && (
             <AdminCMS
               key="admin"
               orders={orders}
@@ -2047,7 +2212,12 @@ export default function App() {
               setProducts={setProducts}
               siteConfig={siteConfig}
               setSiteConfig={setSiteConfig}
-              setAdminAuth={setAdminAuth}
+              onLogout={async () => {
+                await handleAdminLogout();
+                navigateTo('home');
+              }}
+              adminUser={adminUser}
+              syncStatus={syncStatus}
               showToast={showToast}
             />
           )}
@@ -2060,6 +2230,24 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
